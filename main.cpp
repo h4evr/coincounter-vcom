@@ -1,5 +1,5 @@
 #include <wx/wx.h>
-#include "coincounter_gui.h"
+#include "frmMain.h"
 
 class CoinCounterApp: public wxApp {
     virtual bool OnInit();
@@ -8,7 +8,7 @@ class CoinCounterApp: public wxApp {
 IMPLEMENT_APP(CoinCounterApp)
 
 bool CoinCounterApp::OnInit() {
-	MyMainFrame *frame = new MyMainFrame(NULL);
+	frmMain *frame = new frmMain(NULL);
 	frame->Show(true);
 	SetTopWindow(frame);
 	return true;
