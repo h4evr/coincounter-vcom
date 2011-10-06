@@ -8,6 +8,8 @@
 #ifndef __coincounter_gui__
 #define __coincounter_gui__
 
+class ImageCanvas;
+
 #include <wx/string.h>
 #include <wx/button.h>
 #include <wx/gdicmn.h>
@@ -33,10 +35,11 @@ class MyMainFrame : public wxFrame
 	
 	protected:
 		wxButton* btnLoadImage;
+		wxButton* btnLoadFromCamera;
 		wxButton* btnCountMoney;
 		
 		wxButton* btnAbout;
-		wxPanel* pnlBackground;
+		ImageCanvas* pnlBackground;
 		wxStaticText* m_staticText1;
 		wxStaticText* m_staticText2;
 		wxStaticText* lbl1CentCoins;
@@ -59,13 +62,14 @@ class MyMainFrame : public wxFrame
 		
 		// Virtual event handlers, overide them in your derived class
 		virtual void onLoadImageClicked( wxCommandEvent& event ) { event.Skip(); }
+		virtual void onLoadFromCameraClicked( wxCommandEvent& event ) { event.Skip(); }
 		virtual void onCountMoneyClicked( wxCommandEvent& event ) { event.Skip(); }
 		virtual void onAboutClicked( wxCommandEvent& event ) { event.Skip(); }
 		
 	
 	public:
 		
-		MyMainFrame( wxWindow* parent, wxWindowID id = wxID_ANY, const wxString& title = wxT("Coin Counter"), const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxSize( 511,451 ), long style = wxDEFAULT_FRAME_STYLE|wxTAB_TRAVERSAL );
+		MyMainFrame( wxWindow* parent, wxWindowID id = wxID_ANY, const wxString& title = wxT("Coin Counter"), const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxSize( 655,690 ), long style = wxDEFAULT_FRAME_STYLE|wxTAB_TRAVERSAL );
 		~MyMainFrame();
 	
 };

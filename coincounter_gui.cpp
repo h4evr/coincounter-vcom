@@ -5,6 +5,8 @@
 // PLEASE DO "NOT" EDIT THIS FILE!
 ///////////////////////////////////////////////////////////////////////////
 
+#include "imageCanvas.h"
+
 #include "coincounter_gui.h"
 
 ///////////////////////////////////////////////////////////////////////////
@@ -22,6 +24,9 @@ MyMainFrame::MyMainFrame( wxWindow* parent, wxWindowID id, const wxString& title
 	btnLoadImage = new wxButton( this, wxID_ANY, wxT("Load Image"), wxDefaultPosition, wxDefaultSize, 0 );
 	bSizer2->Add( btnLoadImage, 0, wxALL, 5 );
 	
+	btnLoadFromCamera = new wxButton( this, wxID_ANY, wxT("Load From Camera"), wxDefaultPosition, wxDefaultSize, 0 );
+	bSizer2->Add( btnLoadFromCamera, 0, wxALL, 5 );
+	
 	btnCountMoney = new wxButton( this, wxID_ANY, wxT("Count Money"), wxDefaultPosition, wxDefaultSize, 0 );
 	bSizer2->Add( btnCountMoney, 0, wxALL, 5 );
 	
@@ -33,7 +38,9 @@ MyMainFrame::MyMainFrame( wxWindow* parent, wxWindowID id, const wxString& title
 	
 	bSizer1->Add( bSizer2, 0, wxEXPAND, 5 );
 	
-	pnlBackground = new wxPanel( this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL );
+	pnlBackground = new ImageCanvas( this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL );
+	pnlBackground->SetMinSize( wxSize( 640,480 ) );
+	
 	bSizer1->Add( pnlBackground, 1, wxEXPAND | wxALL, 5 );
 	
 	wxBoxSizer* bSizer3;
@@ -139,6 +146,7 @@ MyMainFrame::MyMainFrame( wxWindow* parent, wxWindowID id, const wxString& title
 	
 	// Connect Events
 	btnLoadImage->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( MyMainFrame::onLoadImageClicked ), NULL, this );
+	btnLoadFromCamera->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( MyMainFrame::onLoadFromCameraClicked ), NULL, this );
 	btnCountMoney->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( MyMainFrame::onCountMoneyClicked ), NULL, this );
 	btnAbout->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( MyMainFrame::onAboutClicked ), NULL, this );
 }
@@ -147,6 +155,7 @@ MyMainFrame::~MyMainFrame()
 {
 	// Disconnect Events
 	btnLoadImage->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( MyMainFrame::onLoadImageClicked ), NULL, this );
+	btnLoadFromCamera->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( MyMainFrame::onLoadFromCameraClicked ), NULL, this );
 	btnCountMoney->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( MyMainFrame::onCountMoneyClicked ), NULL, this );
 	btnAbout->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( MyMainFrame::onAboutClicked ), NULL, this );
 }
