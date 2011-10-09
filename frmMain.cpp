@@ -44,19 +44,21 @@ void frmMain::onLoadFromCameraClicked( wxCommandEvent& event ) {
 void frmMain::onCountMoneyClicked( wxCommandEvent& event ) {
 
 	//Blur
-	blur(image, image, Size(2,2));
+	blur(image, image, Size(5,5));
 	
 	Mat im_gray;
 	//Convert to grayScale
 	cvtColor(image,im_gray,CV_RGB2GRAY);
 
 	//Threshold to convert to black & white
-	Mat img_bw = im_gray > 128;
+	Mat img_bw = im_gray > 10;
 
-	//Invert colors
-	Mat img_bw_inverted;
+	//Reduce grain
+	Mat img_bw_contorns;
+ 	blur(img_bw, img_bw_contorns, Size(2,2));
+	cv::compare(img_bw, img_bw_contorns, img_bw_contorns, cv::CMP_NE);
 
-	this->pnlBackground->SetImage(img_bw);
+	this->pnlBackground->SetImage(img_bw_contorns);
 	this->pnlBackground->Refresh();
 	event.Skip();
 }
