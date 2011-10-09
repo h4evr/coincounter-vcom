@@ -54,11 +54,11 @@ void frmMain::onCountMoneyClicked( wxCommandEvent& event ) {
 	Mat img_bw = im_gray > 10;
 
 	//Reduce grain
-	Mat img_bw_contorns;
- 	blur(img_bw, img_bw_contorns, Size(2,2));
-	cv::compare(img_bw, img_bw_contorns, img_bw_contorns, cv::CMP_NE);
+	Mat img_bw_edges;
+ 	blur(img_bw, img_bw_edges, Size(2,2));
+	cv::compare(img_bw, img_bw_edges, img_bw_edges, cv::CMP_NE);
 
-	this->pnlBackground->SetImage(img_bw_contorns);
+	this->pnlBackground->SetImage(img_bw_edges);
 	this->pnlBackground->Refresh();
 	event.Skip();
 }
