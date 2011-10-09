@@ -42,6 +42,22 @@ void frmMain::onLoadFromCameraClicked( wxCommandEvent& event ) {
 
 /** If an image is loaded, start the process of counting the coins. */
 void frmMain::onCountMoneyClicked( wxCommandEvent& event ) {
+
+	//Blur
+	blur(image, image, Size(2,2));
+	
+	Mat im_gray;
+	//Convert to grayScale
+	cvtColor(image,im_gray,CV_RGB2GRAY);
+
+	//Threshold to convert to black & white
+	Mat img_bw = im_gray > 128;
+
+	//Invert colors
+	Mat img_bw_inverted;
+
+	this->pnlBackground->SetImage(img_bw);
+	this->pnlBackground->Refresh();
 	event.Skip();
 }
 
