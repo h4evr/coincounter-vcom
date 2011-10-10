@@ -44,23 +44,55 @@ void frmMain::onLoadFromCameraClicked( wxCommandEvent& event ) {
 void frmMain::onCountMoneyClicked( wxCommandEvent& event ) {
 
 	//Blur
-	blur(image, image, Size(5,5));
+	//blur(image, image, Size(5,5));
 	
-	Mat im_gray;
+	Mat img_gray;
 	//Convert to grayScale
-	cvtColor(image,im_gray,CV_RGB2GRAY);
+	//cvtColor(image,img_gray,CV_RGB2GRAY);
 
-	//Threshold to convert to black & white
-	Mat img_bw = im_gray > 10;
+	
+	//Mat img_bw;
+	//adaptiveThreshold(img_gray, img_bw, 255, CV_ADAPTIVE_THRESH_GAUSSIAN_C, CV_THRESH_BINARY, 5, 0);
 
 	//Reduce grain
-	Mat img_bw_edges;
- 	blur(img_bw, img_bw_edges, Size(2,2));
-	cv::compare(img_bw, img_bw_edges, img_bw_edges, cv::CMP_NE);
+	//Mat img_bw_edges;
+ 	//blur(img_bw, img_bw_edges, Size(2,2));
+	//cv::compare(img_bw, img_bw_edges, img_bw_edges, cv::CMP_NE);
+	//int upper = 200;
+	//int lower = 80;
+	//Canny(img_bw, img_bw_edges, lower, upper, 3);
 
-	this->pnlBackground->SetImage(img_bw_edges);
+	cvtColor(image, img_gray, CV_BGR2GRAY);
+
+    	// smooth it, otherwise a lot of false circles may be detected
+	//GaussianBlur( img_gray, img_gray, Size(15, 15), 2, 2 );
+	equalizeHist( img_gray, img_gray );
+	
+//Threshold to convert to black & white
+	Mat img_bw = img_gray > 150;
+
+	vector<Vec3f> circles;
+     	HoughCircles(img_bw, circles, CV_HOUGH_GRADIENT,1, img_bw.rows/10, 21, 100);
+
+
+	Mat img_color;
+	//Convert to color
+	cvtColor(img_gray,img_color,CV_GRAY2RGB);
+
+	for( size_t i = 0; i < circles.size(); i++ )
+	{
+		Point center(cvRound(circles[i][0]), cvRound(circles[i][1]));
+		int radius = cvRound(circles[i][2]);
+		// draw the circle center
+		circle( img_color, center, 3, Scalar(0,255,0), -1, 8, 0 );
+		// draw the circle outline
+		circle( img_color, center, radius, Scalar(0,0,255), 3, 8, 0 );
+	}
+
+
+	this->pnlBackground->SetImage(img_bw);
 	this->pnlBackground->Refresh();
-	event.Skip();
+	//event.Skip();
 }
 
 /** Show information about the application. */
