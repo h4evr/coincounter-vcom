@@ -32,14 +32,19 @@ void ImageCanvas::paintEvent(wxPaintEvent & evt) {
 void ImageCanvas::render(wxDC&  dc) {
 	if(!image.IsOk())
 		return;
-		
+	
+	wxCoord w, h;
+	this->GetSize(&w, &h);
+	double scaleX = (double)w / (double)image.GetWidth();
+	double scaleY = (double)h / (double)image.GetHeight();
+	dc.SetUserScale(std::min(scaleX, scaleY), std::min(scaleX, scaleY));
 	dc.DrawBitmap(image, 0, 0, false);
 }
 
 /** Set the image that is to be rendered. */
 void ImageCanvas::SetImage(const cv::Mat& image) {
-	cv::imwrite(".imagecanvastmpimage.jpg", image);
-	this->image.LoadFile(_(".imagecanvastmpimage.jpg"), wxBITMAP_TYPE_JPEG);
-	::wxRemoveFile(_(".imagecanvastmpimage.jpg"));
+	cv::imwrite("imagecanvastmpimage.jpg", image);
+	this->image.LoadFile(_("imagecanvastmpimage.jpg"), wxBITMAP_TYPE_JPEG);
+	//::wxRemoveFile(_(".imagecanvastmpimage.jpg"));
 }
 
