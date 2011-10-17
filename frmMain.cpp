@@ -173,11 +173,41 @@ Mat find_corners_and_adjust_image(Mat& im, bool* found_boundary=NULL, Mat* trans
         //new_contours.push_back(result);
         //std::cout << result.size() << ", " << contourArea(Mat(result)) << std::endl;
 
-        // If the new polygon has 4 vertices and a large area, we found our contour!
-        if(result.size() == 4 && contourArea(Mat(result)) >= 10000) {
-            // Set the boundary as the new found polygon and exit
-            boundary = result;
-            break;
+        // If the polygon has more than 4 vertices, try to simplify it.
+        if(result.size() >= 4) {
+            // Get the (rotated) rectangle with the minimum area that encloses the polygon.
+            RotatedRect r = minAreaRect(Mat(result));
+
+            // If the polygon area is big enough, we have our square!
+            if(r.size.area() >= 10000) {
+                // Set the boundary as the new found polygon and exit
+
+                // The RotatedRect needs to be converted to vector of points.
+                // Trigonometry time!
+
+                // Empty the boundary
+                boundary = vector<Point>();
+
+                // Angle of the RotatedRect is in degrees and
+                // starts counting from the Y axis. Subtract from 90º to rectify.
+                double cAng = cos((90-r.angle) * 0.0174532925);
+                double sAng = sin((90-r.angle) * 0.0174532925);
+                double halfW = r.size.width / 2;
+                double halfH = r.size.height / 2;
+
+                // Calculate each point of the rectangle and push it to the boundary.
+                boundary.push_back(Point(r.center.x + (cAng * (-halfW) - sAng * (halfH)), 
+                                         r.center.y + (sAng * (-halfW) + cAng * (halfH))));
+                boundary.push_back(Point(r.center.x + (cAng * (-halfW) - sAng * (-halfH)), 
+                                         r.center.y + (sAng * (-halfW) + cAng * (-halfH))));
+                boundary.push_back(Point(r.center.x + (cAng * (halfW) - sAng * (-halfH)), 
+                                         r.center.y + (sAng * (halfW) + cAng * (-halfH))));
+                boundary.push_back(Point(r.center.x + (cAng * (halfW) - sAng * (halfH)), 
+                                         r.center.y + (sAng * (halfW) + cAng * (halfH))));
+
+                // Boundary is set, we're done here!
+                break;
+            }
         }
 	}
 
