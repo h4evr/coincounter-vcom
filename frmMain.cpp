@@ -14,10 +14,37 @@
 #include <cvaux.h>
 #include <highgui.h>
 #include "meanshiftsegmentation.h"
+#include <sstream>
 
 using namespace cv;
 
 Mat image;
+
+typedef enum {
+    ONE_CENT = 0,
+    TWO_CENT,
+    FIVE_CENT,
+    TEN_CENT,
+    TWENTY_CENT,
+    FIFTY_CENT,
+    ONE_EURO,
+    TWO_EURO
+} COINS;
+
+// Coin diameter in millimeters * 100
+const int coin_sizes[] = {
+    1625, // ONE_CENT
+    1875, // TWO_CENT
+    2125, // FIVE_CENT
+    1975, // TEN_CENT
+    2225, // TWENTY_CENT
+    2425, // FIFTY_CENT
+    2325, // ONE_EURO
+    2575  // TWO_EURO
+};
+
+const double largest_coin_radius = (2575.0 / 100.0 / 2.0);
+const double smallest_coin_radius = (1625.0 / 100.0 / 2.0);
 
 /** Constructor */
 frmMain::frmMain( wxWindow* parent, wxWindowID id, const wxString& title, 
@@ -90,47 +117,175 @@ Mat segmentate(const Mat& src) {
 	CvMat _src = src;
 	CvMat *_dest = cvCreateMat(_src.rows, _src.cols, _src.type);
 	
-	PyrMeanShiftFiltering(&_src, _dest, 20, 40, 1);
+	PyrMeanShiftFiltering(&_src, _dest, 3, 80, 1);
 	
 	return Mat(_dest);
+}
+
+Mat find_corners_and_adjust_image(Mat& im, bool* found_boundary=NULL) {
+    // Normalize the image energy
+    Mat norm = Normalize(im);
+    Mat img_gray;
+    Mat edges;
+
+    // Where the contours will be saved
+    vector<vector<Point> > contours;
+
+    // Convert to grayscale and normalize the histogram 
+    cvtColor(norm, img_gray, CV_BGR2GRAY);
+    equalizeHist(img_gray, img_gray);
+
+    // Apply a very high threshold to keep only the white areas
+    threshold(img_gray, img_gray, 250, 255, THRESH_BINARY);
+
+    // Apply canny algo to pass only edges to the contour finding algorithm
+    Canny(img_gray, edges, 0, 128, 5);
+
+    // Find the contours!
+    findContours(edges, contours, CV_RETR_LIST, CV_CHAIN_APPROX_SIMPLE, Point(0, 0));
+
+    //Mat vis;
+    //cvtColor(edges, vis, CV_GRAY2BGR);
+    //vector<vector<Point> > new_contours;
+
+    // The boundary square will be kept here
+    vector<Point> boundary;
+
+    // Analyze contour
+    for(size_t i = 0; i < contours.size(); ++i) {
+
+        // Approximate the contour to polygon
+        vector<Point> result;
+        approxPolyDP(Mat(contours[i]), result, arcLength(Mat(contours[i]), true) * 0.02, true);
+
+        //new_contours.push_back(result);
+        //std::cout << result.size() << ", " << contourArea(Mat(result)) << std::endl;
+
+        // If the new polygon has 4 vertices and a large area, we found our contour!
+        if(result.size() == 4 && contourArea(Mat(result)) >= 10000) {
+            // Set the boundary as the new found polygon and exit
+            boundary = result;
+            break;
+        }
+	}
+
+    // for(size_t i = 0; i < new_contours.size(); ++i) {
+    //     if(new_contours[i].size() >= 4 && contourArea(Mat(new_contours[i])) > 1000) {
+    //         std::cout << "BAH --> " << i << ", " << contourArea(Mat(new_contours[i])) << std::endl;
+    //         vector<vector<Point> > cn;
+    //         cn.push_back(new_contours[i]);
+    //         drawContours(vis, cn, -1, Scalar( 255 / new_contours.size() * i, 255, 0), 1);
+    //     }
+    // }
+
+    // cvNamedWindow("teste");
+    // imshow("teste", vis);
+
+    // If a boundary was detected, apply a perspective transform,
+    // or else, return the original image.
+    if(boundary.size() > 0) {
+        // Map the found boundary
+        Point2f src[] = {
+            boundary[0],
+            boundary[1],
+            boundary[2],
+            boundary[3]
+        };
+
+        // to the full area of the image
+        Point2f dst[] = {
+            Point2f(0.0f, 0.0f),
+            Point2f(im.cols, 0.0f),
+            Point2f(im.cols, im.cols),
+            Point2f(0.0f, im.cols)
+        };
+
+        // Calculate the transform matrix between the 4 pairs of points
+        Mat transform = getPerspectiveTransform(src, dst);
+
+        // Apply the transformation to the image
+        Mat corrected;
+        warpPerspective(im, corrected, transform, Size(im.cols, im.cols));
+
+        if(found_boundary) {
+            *found_boundary = true;
+        }
+
+        // Return the new image!
+        return corrected;
+    } else {
+        if(found_boundary) {
+            *found_boundary = false;
+        }
+
+        // No boundary detected, so return the original image.
+        return im;
+    }
 }
 
 /** If an image is loaded, start the process of counting the coins. */
 void frmMain::onCountMoneyClicked( wxCommandEvent& event ) {
 	
+    
 	// Normalize the energy of the image (reduces JPEG artifacts!)
-	Mat img_norm = Normalize(image);
+	// Mat img_norm = Normalize(image);
 	
+    //blur(image, image, Size(5,5));
+
 	// Equalize the histogram of the color image (to restore contrast taken by
 	// the normalization).
-	Mat img_eq = equalize_color_histogram(img_norm);
+	//Mat img_eq = equalize_color_histogram(image);
 	
 	// Blur the image to remove noise
-	blur(img_eq, img_eq, Size(5,5));
 	
 	// Segmentate the image using the meanshift segmentation algorithm.
-	Mat img_color = segmentate(img_eq);
-	
+	Mat img_color = segmentate(image);
+
+    bool found_boundary = true;
+
+    // Uncomment to stop if no  boundary is detected.
+    img_color = find_corners_and_adjust_image(img_color/*, &found_boundary*/);
+
+    if(!found_boundary) {
+        wxMessageBox(_("No boundary detected, so detection method will not work.\nTry another image, please!"), _("Error"), wxOK | wxICON_ERROR);
+        return;
+    }
+
 	// Convert the image to grayscale
 	Mat img_gray;
 	cvtColor(img_color, img_gray, CV_BGR2GRAY);
+
+	int canny_param = 80;
 	
 	//Threshold to convert the image to black & white
 	Mat img_bw;
-	threshold(img_gray, img_bw, 64, 255, THRESH_BINARY);
+	threshold(img_gray, img_bw, canny_param, 255, THRESH_TOZERO);
 	
 	// Used only for visualization purposes.
 	// Uses the same parameters as the hough transform.
 	Mat edges;
-	Canny(img_bw, edges, 100, 200, 3);
+		
+	Canny(img_bw, edges, canny_param >> 1, canny_param, 3);
 	
+    // Calculate the scaling factor
+    double factor = 195.0 / (double)edges.cols;
+
+
+    // Calculate the minimum and maximum radius of a coin in pixels
+    int max_radius = largest_coin_radius / factor;
+    int min_radius = smallest_coin_radius / factor;
+
+    std::cout << "Largest coin radius: " << max_radius << std::endl
+              << "Smallest coin radius: " << min_radius << std::endl;
+
 	// Apply the Hough transform to find existing circles
 	vector<Vec3f> circles;
-    HoughCircles(img_bw, circles, CV_HOUGH_GRADIENT, 3, 75, 200, (int)(2.0f*3.1415f*40.0f), 40);
+	
+    HoughCircles(img_bw, circles, CV_HOUGH_GRADIENT, 1, min_radius, canny_param, min_radius, min_radius / 2, max_radius * 1.5);
 
 	// Prepare image for visualization
-	cvtColor(edges, img_color, CV_GRAY2BGR);
-	
+    //cvtColor(edges, img_color, CV_GRAY2BGR);
+
 	// Draw the circles that were found
 	for( size_t i = 0; i < circles.size(); i++ ) {
 		Point center(cvRound(circles[i][0]), cvRound(circles[i][1]));
@@ -139,6 +294,11 @@ void frmMain::onCountMoneyClicked( wxCommandEvent& event ) {
 		circle( img_color, center, 3, Scalar(0,255,0), -1, 8, 0 );
 		// draw the circle outline
 		circle( img_color, center, radius, Scalar(0,0,255), 3, 8, 0 );
+
+        std::stringstream radiusStr;
+        radiusStr << (int)(radius * factor * 200.0);
+
+        putText(img_color, radiusStr.str(), center, FONT_HERSHEY_SIMPLEX, 0.5, Scalar(255, 0, 0));
 	}
 
 	// Show the final image to the user
@@ -152,4 +312,5 @@ void frmMain::onAboutClicked( wxCommandEvent& event ) {
 	frm->ShowModal();
 	delete frm;
 }
+
 
