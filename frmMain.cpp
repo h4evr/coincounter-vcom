@@ -333,9 +333,9 @@ void frmMain::onCountMoneyClicked( wxCommandEvent& event ) {
     HoughCircles(img_bw, circles, CV_HOUGH_GRADIENT, 1, 
                 min_radius - allowed_offset, // Min dist between circle centers
                 canny_param, // Higher threshold on canny
-                min_radius - allowed_offset, // Number of required votes
-                (min_radius - allowed_offset) / 2, // Minimum radius
-                (max_radius + allowed_offset) * 1.5); // Maximum radius
+                (min_radius - allowed_offset) / 2, // Number of required votes
+                min_radius - allowed_offset, // Minimum radius
+                max_radius + allowed_offset); // Maximum radius
 
 	// Prepare image for visualization
     Mat original_image_cropped;
