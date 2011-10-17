@@ -241,7 +241,7 @@ Mat find_corners_and_adjust_image(Mat& im, bool* found_boundary=NULL, Mat* trans
 
 COINS match_coin(int x, int y, int radius, double factor) {
     int diameter = (int)(radius * factor * 200.0);
-    int epsilon = smallest_coin_radius * 50;
+    int epsilon = smallest_coin_radius * 100 / 10;
 
     int diff[] = {0, 0, 0, 0, 0, 0, 0, 0};
 
@@ -264,7 +264,7 @@ COINS match_coin(int x, int y, int radius, double factor) {
               << "Epsilon: " << epsilon << std::endl
               << std::endl;
 
-    if(min_val < epsilon)
+    if(min_val <= epsilon)
         return (COINS)min_index;
     else
         return NO_COIN;
@@ -275,7 +275,7 @@ void frmMain::onCountMoneyClicked( wxCommandEvent& event ) {
 	
     
 	// Normalize the energy of the image (reduces JPEG artifacts!)
-	// Mat img_norm = Normalize(image);
+	//Mat img_norm = Normalize(image);
 	
     //blur(image, image, Size(5,5));
 
@@ -303,7 +303,8 @@ void frmMain::onCountMoneyClicked( wxCommandEvent& event ) {
 	Mat img_gray;
 	cvtColor(img_color, img_gray, CV_BGR2GRAY);
 
-	int canny_param = 80;
+	// TODO: Implement a routine to calculate an automatic threshold
+    int canny_param = 80;
 	
 	//Threshold to convert the image to black & white
 	Mat img_bw;
@@ -317,7 +318,6 @@ void frmMain::onCountMoneyClicked( wxCommandEvent& event ) {
 	
     // Calculate the scaling factor
     double factor = 195.0 / (double)edges.cols;
-
 
     // Calculate the minimum and maximum radius of a coin in pixels
     int max_radius = largest_coin_radius / factor;
@@ -338,10 +338,10 @@ void frmMain::onCountMoneyClicked( wxCommandEvent& event ) {
                 max_radius + allowed_offset); // Maximum radius
 
 	// Prepare image for visualization
-    //Mat original_image_cropped;
-    //warpPerspective(image, original_image_cropped, perspective_transform, Size(image.rows, image.rows));
-    //img_color = original_image_cropped;
-    //cvtColor(edges, img_color, CV_GRAY2BGR);
+    Mat original_image_cropped;
+    warpPerspective(image, original_image_cropped, perspective_transform, Size(image.rows, image.rows));
+    img_color = original_image_cropped;
+    //cvtColor(img_bw, img_color, CV_GRAY2BGR);
 
     int coin_amounts[] = {0, 0, 0, 0, 0, 0, 0, 0};
 
