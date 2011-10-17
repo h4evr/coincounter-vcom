@@ -289,15 +289,95 @@ COINS match_coin(int x, int y, int radius, double factor) {
         }
     }
 
-    std::cout << "Coin diameter: " << diameter << std::endl
-              << "Lowest diff: " << min_val << std::endl
-              << "Epsilon: " << epsilon << std::endl
-              << std::endl;
+    //std::cout << "Coin diameter: " << diameter << std::endl
+    //          << "Lowest diff: " << min_val << std::endl
+    //          << "Epsilon: " << epsilon << std::endl
+    //          << std::endl;
 
     if(min_val <= epsilon)
         return (COINS)min_index;
     else
         return NO_COIN;
+}
+
+int get_number_of_supporting_pixels(const Mat& img, int x, int y, int radius) {
+    int counter = 0;
+    int pX, pY;
+
+    for(double angle = 0.0; angle <= 2.0 * 3.14159; angle += 0.0174532925) {
+        pX = x + radius * cos(angle);
+        pY = y + radius * sin(angle);
+        if(pX >= 0 && pX < img.cols &&
+           pY >= 0 && pY < img.rows) {
+            uchar pixel = img.at<uchar>(pY, pX);
+            if(pixel != 0) {
+                ++counter;
+            }
+        }
+    }
+
+    return counter;
+}
+
+void cluster_circles(const Mat& img, vector<Vec3f>& circles) {
+    vector<std::pair<int,Vec3f> > analysis;
+    vector<Vec3f> result;
+
+    int min_dist = 81;
+
+    for(size_t i = 0; i < circles.size(); ++i) {
+        analysis.push_back(std::pair<int,Vec3f>(get_number_of_supporting_pixels(img, 
+                                            circles[i][0], circles[i][1], circles[i][2]),
+                                           circles[i]));
+    }
+
+    int maximum = -1;
+    int best_index = -1;
+
+    vector<bool> marked;
+    marked.reserve(analysis.size());
+    for(size_t i = 0; i < analysis.size(); ++i) {
+        marked[i] = false;
+    }
+
+    for(size_t i = 0; i < analysis.size(); ++i) {
+        if(marked[i]) continue;
+
+        maximum = analysis[i].first;
+
+        float x = analysis[i].second[0];
+        float y = analysis[i].second[1];
+
+        for(size_t j = 0; j < analysis.size(); ++j) {
+            if(j == i || marked[j]) continue;
+
+            float dx = (analysis[j].second[0] - x);
+            dx *= dx;
+
+            float dy = (analysis[j].second[1] - y);
+            dy *= dy;
+
+            float dist = sqrt(dx + dy);
+
+            if(dist <= min_dist) {
+                if(analysis[j].first > maximum) {
+                    maximum = analysis[j].first;
+                    marked[i] = true;
+                } else {
+                    marked[j] = true;
+                }
+            }
+        }
+
+        std::cout << maximum << std::endl;
+    }
+
+    for(size_t i = 0; i < analysis.size(); ++i) {
+        if(marked[i]) continue;
+        result.push_back(analysis[i].second);
+    }
+
+    circles = result;
 }
 
 /** If an image is loaded, start the process of counting the coins. */
@@ -361,19 +441,21 @@ void frmMain::onCountMoneyClicked( wxCommandEvent& event ) {
 	vector<Vec3f> circles;
 	
     HoughCircles(img_bw, circles, CV_HOUGH_GRADIENT, 1, 
-                min_radius - allowed_offset, // Min dist between circle centers
+                1,//min_radius - allowed_offset, // Min dist between circle centers
                 canny_param, // Higher threshold on canny
                 (min_radius - allowed_offset) / 2, // Number of required votes
                 min_radius - allowed_offset, // Minimum radius
                 max_radius + allowed_offset); // Maximum radius
 
 	// Prepare image for visualization
-    Mat original_image_cropped;
-    warpPerspective(image, original_image_cropped, perspective_transform, Size(image.rows, image.rows));
-    img_color = original_image_cropped;
-    //cvtColor(img_bw, img_color, CV_GRAY2BGR);
+    //Mat original_image_cropped;
+    //warpPerspective(image, original_image_cropped, perspective_transform, Size(image.rows, image.rows));
+    //img_color = original_image_cropped;
+    cvtColor(edges, img_color, CV_GRAY2BGR);
 
     int coin_amounts[] = {0, 0, 0, 0, 0, 0, 0, 0};
+
+    cluster_circles(edges, circles);
 
 	// Draw the circles that were found
 	for( size_t i = 0; i < circles.size(); i++ ) {
@@ -385,7 +467,7 @@ void frmMain::onCountMoneyClicked( wxCommandEvent& event ) {
             // draw the circle center
             circle( img_color, center, 3, Scalar(0,255,0), -1, 8, 0 );
             // draw the circle outline
-            circle( img_color, center, radius, Scalar(0,0,255), 3, 8, 0 );
+            circle( img_color, center, radius, Scalar(0,0,255), 1, 8, 0 );
 
             std::stringstream radiusStr;
             radiusStr << coin2str[detected_coin] << " ("
@@ -398,7 +480,7 @@ void frmMain::onCountMoneyClicked( wxCommandEvent& event ) {
             // draw the circle center
             circle( img_color, center, 3, Scalar(0,255,255), -1, 8, 0 );
             // draw the circle outline
-            circle( img_color, center, radius, Scalar(255,0,255), 3, 8, 0 );
+            circle( img_color, center, radius, Scalar(255,0,255), 1, 8, 0 );
 
             std::stringstream radiusStr;
             radiusStr << (int)(radius * factor * 200.0);
