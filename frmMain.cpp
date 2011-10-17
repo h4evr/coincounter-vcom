@@ -338,9 +338,9 @@ void frmMain::onCountMoneyClicked( wxCommandEvent& event ) {
                 max_radius + allowed_offset); // Maximum radius
 
 	// Prepare image for visualization
-    Mat original_image_cropped;
-    warpPerspective(image, original_image_cropped, perspective_transform, Size(image.rows, image.rows));
-    img_color = original_image_cropped;
+    //Mat original_image_cropped;
+    //warpPerspective(image, original_image_cropped, perspective_transform, Size(image.rows, image.rows));
+    //img_color = original_image_cropped;
     //cvtColor(edges, img_color, CV_GRAY2BGR);
 
     int coin_amounts[] = {0, 0, 0, 0, 0, 0, 0, 0};
