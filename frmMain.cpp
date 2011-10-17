@@ -28,7 +28,8 @@ typedef enum {
     TWENTY_CENT,
     FIFTY_CENT,
     ONE_EURO,
-    TWO_EURO
+    TWO_EURO,
+    NO_COIN
 } COINS;
 
 // Coin diameter in millimeters * 100
@@ -41,6 +42,17 @@ const int coin_sizes[] = {
     2425, // FIFTY_CENT
     2325, // ONE_EURO
     2575  // TWO_EURO
+};
+
+const std::string coin2str[] = {
+    "1c",
+    "2c",
+    "5c",
+    "10c",
+    "20c",
+    "50c",
+    "1e",
+    "2e"
 };
 
 const double largest_coin_radius = (2575.0 / 100.0 / 2.0);
@@ -122,7 +134,7 @@ Mat segmentate(const Mat& src) {
 	return Mat(_dest);
 }
 
-Mat find_corners_and_adjust_image(Mat& im, bool* found_boundary=NULL) {
+Mat find_corners_and_adjust_image(Mat& im, bool* found_boundary=NULL, Mat* transform_matrix=NULL) {
     // Normalize the image energy
     Mat norm = Normalize(im);
     Mat img_gray;
@@ -207,6 +219,10 @@ Mat find_corners_and_adjust_image(Mat& im, bool* found_boundary=NULL) {
         Mat corrected;
         warpPerspective(im, corrected, transform, Size(im.cols, im.cols));
 
+        if(transform_matrix) {
+            *transform_matrix = transform;
+        }
+
         if(found_boundary) {
             *found_boundary = true;
         }
@@ -221,6 +237,37 @@ Mat find_corners_and_adjust_image(Mat& im, bool* found_boundary=NULL) {
         // No boundary detected, so return the original image.
         return im;
     }
+}
+
+COINS match_coin(int x, int y, int radius, double factor) {
+    int diameter = (int)(radius * factor * 200.0);
+    int epsilon = smallest_coin_radius * 50;
+
+    int diff[] = {0, 0, 0, 0, 0, 0, 0, 0};
+
+    for(int i = ONE_CENT; i < NO_COIN; ++i) {
+        diff[i] = abs(diameter - coin_sizes[i]);
+    }
+
+    int min_index = 0;
+    int min_val = diff[0];
+
+    for(int i = ONE_CENT; i < NO_COIN; ++i) {
+        if(diff[i] < min_val) {
+            min_val = diff[i];
+            min_index = i;
+        }
+    }
+
+    std::cout << "Coin diameter: " << diameter << std::endl
+              << "Lowest diff: " << min_val << std::endl
+              << "Epsilon: " << epsilon << std::endl
+              << std::endl;
+
+    if(min_val < epsilon)
+        return (COINS)min_index;
+    else
+        return NO_COIN;
 }
 
 /** If an image is loaded, start the process of counting the coins. */
@@ -242,9 +289,10 @@ void frmMain::onCountMoneyClicked( wxCommandEvent& event ) {
 	Mat img_color = segmentate(image);
 
     bool found_boundary = true;
+    Mat perspective_transform;
 
     // Uncomment to stop if no  boundary is detected.
-    img_color = find_corners_and_adjust_image(img_color/*, &found_boundary*/);
+    img_color = find_corners_and_adjust_image(img_color/*, &found_boundary*/, NULL, &perspective_transform);
 
     if(!found_boundary) {
         wxMessageBox(_("No boundary detected, so detection method will not work.\nTry another image, please!"), _("Error"), wxOK | wxICON_ERROR);
@@ -274,6 +322,7 @@ void frmMain::onCountMoneyClicked( wxCommandEvent& event ) {
     // Calculate the minimum and maximum radius of a coin in pixels
     int max_radius = largest_coin_radius / factor;
     int min_radius = smallest_coin_radius / factor;
+    int allowed_offset = 1.5/*mm*/ / factor;
 
     std::cout << "Largest coin radius: " << max_radius << std::endl
               << "Smallest coin radius: " << min_radius << std::endl;
@@ -281,29 +330,79 @@ void frmMain::onCountMoneyClicked( wxCommandEvent& event ) {
 	// Apply the Hough transform to find existing circles
 	vector<Vec3f> circles;
 	
-    HoughCircles(img_bw, circles, CV_HOUGH_GRADIENT, 1, min_radius, canny_param, min_radius, min_radius / 2, max_radius * 1.5);
+    HoughCircles(img_bw, circles, CV_HOUGH_GRADIENT, 1, 
+                min_radius - allowed_offset, // Min dist between circle centers
+                canny_param, // Higher threshold on canny
+                min_radius - allowed_offset, // Number of required votes
+                (min_radius - allowed_offset) / 2, // Minimum radius
+                (max_radius + allowed_offset) * 1.5); // Maximum radius
 
 	// Prepare image for visualization
+    Mat original_image_cropped;
+    warpPerspective(image, original_image_cropped, perspective_transform, Size(image.rows, image.rows));
+    img_color = original_image_cropped;
     //cvtColor(edges, img_color, CV_GRAY2BGR);
+
+    int coin_amounts[] = {0, 0, 0, 0, 0, 0, 0, 0};
 
 	// Draw the circles that were found
 	for( size_t i = 0; i < circles.size(); i++ ) {
-		Point center(cvRound(circles[i][0]), cvRound(circles[i][1]));
-		int radius = cvRound(circles[i][2]);
-		// draw the circle center
-		circle( img_color, center, 3, Scalar(0,255,0), -1, 8, 0 );
-		// draw the circle outline
-		circle( img_color, center, radius, Scalar(0,0,255), 3, 8, 0 );
+        Point center(cvRound(circles[i][0]), cvRound(circles[i][1]));
+        int radius = cvRound(circles[i][2]);
 
-        std::stringstream radiusStr;
-        radiusStr << (int)(radius * factor * 200.0);
+		COINS detected_coin = match_coin(center.x, center.y, radius, factor);
+        if(detected_coin != NO_COIN) {
+            // draw the circle center
+            circle( img_color, center, 3, Scalar(0,255,0), -1, 8, 0 );
+            // draw the circle outline
+            circle( img_color, center, radius, Scalar(0,0,255), 3, 8, 0 );
 
-        putText(img_color, radiusStr.str(), center, FONT_HERSHEY_SIMPLEX, 0.5, Scalar(255, 0, 0));
+            std::stringstream radiusStr;
+            radiusStr << coin2str[detected_coin] << " ("
+                      << (int)(radius * factor * 200.0) << ")";
+
+            putText(img_color, radiusStr.str(), center, FONT_HERSHEY_SIMPLEX, 1.0, Scalar(255, 0, 0), 3);
+
+            coin_amounts[(int)detected_coin]++;
+        } else {
+            // draw the circle center
+            circle( img_color, center, 3, Scalar(0,255,255), -1, 8, 0 );
+            // draw the circle outline
+            circle( img_color, center, radius, Scalar(255,0,255), 3, 8, 0 );
+
+            std::stringstream radiusStr;
+            radiusStr << (int)(radius * factor * 200.0);
+
+            putText(img_color, radiusStr.str(), center, FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 255, 255));
+        }
 	}
+
+    // Update the UI
+    this->lbl1CentCoins->SetLabel(wxString::Format(_("%d"), coin_amounts[ONE_CENT]));
+    this->lbl2CentCoins->SetLabel(wxString::Format(_("%d"), coin_amounts[TWO_CENT]));
+    this->lbl5CentCoins->SetLabel(wxString::Format(_("%d"), coin_amounts[FIVE_CENT]));
+    this->lbl10CentCoins->SetLabel(wxString::Format(_("%d"), coin_amounts[TEN_CENT]));
+    this->lbl20CentCoins->SetLabel(wxString::Format(_("%d"), coin_amounts[TWENTY_CENT]));
+    this->lbl50CentCoins->SetLabel(wxString::Format(_("%d"), coin_amounts[FIFTY_CENT]));
+    this->lbl1EuroCoins->SetLabel(wxString::Format(_("%d"), coin_amounts[ONE_EURO]));
+    this->lbl2EuroCoins->SetLabel(wxString::Format(_("%d"), coin_amounts[TWO_EURO]));
+
+    double sum = (coin_amounts[ONE_CENT] 
+               + 2 * coin_amounts[TWO_CENT]
+               + 5 * coin_amounts[FIVE_CENT]
+               + 10 * coin_amounts[TEN_CENT]
+               + 20 * coin_amounts[TWENTY_CENT]
+               + 50 * coin_amounts[FIFTY_CENT]
+               + 100 * coin_amounts[ONE_EURO]
+               + 200 * coin_amounts[TWO_EURO])
+               / 100.0;
+
+    this->lblTotalAmount->SetLabel(wxString::Format(_("%.2f €"), sum));
 
 	// Show the final image to the user
 	this->pnlBackground->SetImage(img_color);
-	this->pnlBackground->Refresh();
+    this->Layout();
+    this->Refresh();
 }
 
 /** Show information about the application. */
