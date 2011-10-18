@@ -300,81 +300,104 @@ COINS match_coin(int x, int y, int radius, double factor) {
         return NO_COIN;
 }
 
-int get_number_of_supporting_pixels(const Mat& img, int x, int y, int radius) {
+Vec3f detect_better_center_and_radius(const Mat& img, Vec3f circle) {
     int counter = 0;
-    int pX, pY;
+    double pX, pY, pX2, pY2;
 
-    for(double angle = 0.0; angle <= 2.0 * 3.14159; angle += 0.0174532925) {
-        pX = x + radius * cos(angle);
-        pY = y + radius * sin(angle);
-        if(pX >= 0 && pX < img.cols &&
-           pY >= 0 && pY < img.rows) {
-            uchar pixel = img.at<uchar>(pY, pX);
-            if(pixel != 0) {
-                ++counter;
+    float x = circle[0];
+    float y = circle[1];
+
+    int min_radius = 24;
+    int max_radius = 44;
+
+    vector<Vec2f> points;
+
+    for(double angle = 0.0; angle < 3.14159; angle += 0.0174532925) {
+        for(int r = min_radius; r <= max_radius; ++r) {
+            pX = x + r * cos(angle);
+            pY = y + r * sin(angle);
+            pX2 = x + r * cos(180.0 + angle);
+            pY2 = y + r * sin(180.0 + angle);
+
+            uchar pixel1 = 0, pixel2 = 0;
+
+            if((pX >= 0 && pX < img.cols &&
+                pY >= 0 && pY < img.rows)) {
+                pixel1 = img.at<uchar>(pY, pX);
             }
+
+            if((pX2 >= 0 && pX2 < img.cols &&
+                pY2 >= 0 && pY2 < img.rows)) {
+                pixel2 = img.at<uchar>(pY2, pX2);
+            }
+
+            if(pixel1 > 0) {
+                points.push_back(Vec2f(pX, pY));
+            }
+
+            if(pixel2 > 0) {
+                points.push_back(Vec2f(pX2, pY2));
+            }
+
+            if(pixel1 > 0 || pixel2 > 0)
+                break;
         }
     }
 
-    return counter;
+    float newX = x, newY = y, newRadius = circle[2];
+
+    if(points.size() > 0) {
+        for(size_t i = 0; i < points.size(); ++i) {
+            newX += points[i][0];
+            newY += points[i][1];
+        }
+
+        newX /= points.size();
+        newY /= points.size();
+
+        for(size_t i = 0; i < points.size(); ++i) {
+            newRadius += sqrt((points[i][0] - newX) * (points[i][0] - newX) +
+                              (points[i][1] - newY) * (points[i][1] - newY));
+        }
+    }
+
+    return Vec3f(newX, newY, newRadius);
 }
 
 void cluster_circles(const Mat& img, vector<Vec3f>& circles) {
-    vector<std::pair<int,Vec3f> > analysis;
+    vector<Vec3f> analysis;
     vector<Vec3f> result;
 
     int min_dist = 81;
 
-    for(size_t i = 0; i < circles.size(); ++i) {
-        analysis.push_back(std::pair<int,Vec3f>(get_number_of_supporting_pixels(img, 
-                                            circles[i][0], circles[i][1], circles[i][2]),
-                                           circles[i]));
-    }
-
-    int maximum = -1;
-    int best_index = -1;
-
     vector<bool> marked;
     marked.reserve(analysis.size());
-    for(size_t i = 0; i < analysis.size(); ++i) {
+    for(size_t i = 0; i < circles.size(); ++i) {
         marked[i] = false;
     }
 
-    for(size_t i = 0; i < analysis.size(); ++i) {
+    for(size_t i = 0; i < circles.size(); ++i) {
         if(marked[i]) continue;
 
-        maximum = analysis[i].first;
+        Vec3f newVec = detect_better_center_and_radius(img, circles[i]);
 
-        float x = analysis[i].second[0];
-        float y = analysis[i].second[1];
-
-        for(size_t j = 0; j < analysis.size(); ++j) {
+        for(size_t j = 0; j < circles.size(); ++j) {
             if(j == i || marked[j]) continue;
 
-            float dx = (analysis[j].second[0] - x);
+            float dx = (analysis[j].second[0] - newVec[0]);
             dx *= dx;
 
-            float dy = (analysis[j].second[1] - y);
+            float dy = (analysis[j].second[1] - newVec[1]);
             dy *= dy;
 
             float dist = sqrt(dx + dy);
 
             if(dist <= min_dist) {
-                if(analysis[j].first > maximum) {
-                    maximum = analysis[j].first;
-                    marked[i] = true;
-                } else {
-                    marked[j] = true;
-                }
+                marked[j] = true;
             }
         }
 
-        std::cout << maximum << std::endl;
-    }
-
-    for(size_t i = 0; i < analysis.size(); ++i) {
-        if(marked[i]) continue;
-        result.push_back(analysis[i].second);
+        result.push_back(newVec);
     }
 
     circles = result;
