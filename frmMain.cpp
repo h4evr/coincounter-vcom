@@ -16,6 +16,8 @@
 #include "meanshiftsegmentation.h"
 #include <sstream>
 
+#include "circle_fitting.h"
+
 using namespace cv;
 
 Mat image;
@@ -300,78 +302,82 @@ COINS match_coin(int x, int y, int radius, double factor) {
         return NO_COIN;
 }
 
-Vec3f detect_better_center_and_radius(const Mat& img, Vec3f circle) {
+Vec3f detect_better_center_and_radius(Mat& img, Vec3f circle) {
     int counter = 0;
     double pX, pY, pX2, pY2;
 
     float x = circle[0];
     float y = circle[1];
 
-    int min_radius = 24;
-    int max_radius = 44;
+    int min_radius = 20;
+    int max_radius = 50;
 
-    vector<Vec2f> points;
+    vector<Point2f> points;
 
     for(double angle = 0.0; angle < 3.14159; angle += 0.0174532925) {
+        bool found_pos = false, found_neg = false;
+
         for(int r = min_radius; r <= max_radius; ++r) {
             pX = x + r * cos(angle);
             pY = y + r * sin(angle);
-            pX2 = x + r * cos(180.0 + angle);
-            pY2 = y + r * sin(180.0 + angle);
+            pX2 = x + r * cos(180.0*0.0174532925 + angle);
+            pY2 = y + r * sin(180.0*0.0174532925 + angle);
 
             uchar pixel1 = 0, pixel2 = 0;
 
-            if((pX >= 0 && pX < img.cols &&
+            if((!found_pos &&
+                pX >= 0 && pX < img.cols &&
                 pY >= 0 && pY < img.rows)) {
                 pixel1 = img.at<uchar>(pY, pX);
             }
 
-            if((pX2 >= 0 && pX2 < img.cols &&
+            if((!found_neg &&
+                pX2 >= 0 && pX2 < img.cols &&
                 pY2 >= 0 && pY2 < img.rows)) {
                 pixel2 = img.at<uchar>(pY2, pX2);
             }
 
-            if(pixel1 > 0) {
-                points.push_back(Vec2f(pX, pY));
+            if(!found_pos && pixel1 > 127) {
+                points.push_back(Point2f(pX, pY));
+                line(img, Point(x, y), Point(pX, pY), Scalar(127));
+                found_pos = true;
             }
 
-            if(pixel2 > 0) {
-                points.push_back(Vec2f(pX2, pY2));
+            if(!found_neg && pixel2 > 127) {
+                points.push_back(Point2f(pX2, pY2));
+                line(img, Point(x, y), Point(pX2, pY2), Scalar(127));
+                found_neg = true;
             }
 
-            if(pixel1 > 0 || pixel2 > 0)
+            if(found_pos && found_neg)
                 break;
         }
     }
 
     float newX = x, newY = y, newRadius = circle[2];
 
-    if(points.size() > 0) {
-        for(size_t i = 0; i < points.size(); ++i) {
-            newX += points[i][0];
-            newY += points[i][1];
-        }
-
-        newX /= points.size();
-        newY /= points.size();
-
-        for(size_t i = 0; i < points.size(); ++i) {
-            newRadius += sqrt((points[i][0] - newX) * (points[i][0] - newX) +
-                              (points[i][1] - newY) * (points[i][1] - newY));
-        }
+    if(points.size() > (unsigned int)( 3.14159 * min_radius / 2.0)) {
+        // Find a circle that fits all the found points
+        Point3f newCircle = circle_fitting(points);
+        newX = newCircle.x;
+        newY = newCircle.y;
+        newRadius = newCircle.z;
+    } else {
+        newX = -1;
+        newY = -1;
+        newRadius = -1;
     }
 
     return Vec3f(newX, newY, newRadius);
 }
 
-void cluster_circles(const Mat& img, vector<Vec3f>& circles) {
-    vector<Vec3f> analysis;
+void cluster_circles(Mat& img, vector<Vec3f>& circles) {
     vector<Vec3f> result;
 
     int min_dist = 81;
 
     vector<bool> marked;
-    marked.reserve(analysis.size());
+    marked.reserve(circles.size());
     for(size_t i = 0; i < circles.size(); ++i) {
         marked[i] = false;
     }
@@ -381,13 +387,18 @@ void cluster_circles(const Mat& img, vector<Vec3f>& circles) {
 
         Vec3f newVec = detect_better_center_and_radius(img, circles[i]);
 
+        if(newVec[0] == -1) {
+            marked[i] = true;
+            continue;
+        }
+
         for(size_t j = 0; j < circles.size(); ++j) {
             if(j == i || marked[j]) continue;
 
-            float dx = (analysis[j].second[0] - newVec[0]);
+            float dx = (circles[j][0] - newVec[0]);
             dx *= dx;
 
-            float dy = (analysis[j].second[1] - newVec[1]);
+            float dy = (circles[j][1] - newVec[1]);
             dy *= dy;
 
             float dist = sqrt(dx + dy);
@@ -410,8 +421,6 @@ void frmMain::onCountMoneyClicked( wxCommandEvent& event ) {
 	// Normalize the energy of the image (reduces JPEG artifacts!)
 	//Mat img_norm = Normalize(image);
 	
-    //blur(image, image, Size(5,5));
-
 	// Equalize the histogram of the color image (to restore contrast taken by
 	// the normalization).
 	//Mat img_eq = equalize_color_histogram(image);
@@ -420,6 +429,7 @@ void frmMain::onCountMoneyClicked( wxCommandEvent& event ) {
 	
 	// Segmentate the image using the meanshift segmentation algorithm.
 	Mat img_color = segmentate(image);
+    blur(img_color, img_color, Size(5,5));
 
     bool found_boundary = true;
     Mat perspective_transform;
@@ -437,17 +447,23 @@ void frmMain::onCountMoneyClicked( wxCommandEvent& event ) {
 	cvtColor(img_color, img_gray, CV_BGR2GRAY);
 
 	// TODO: Implement a routine to calculate an automatic threshold
-    int canny_param = 80;
+    int canny_param = 70;
 	
 	//Threshold to convert the image to black & white
 	Mat img_bw;
+    blur(img_gray, img_gray, Size(5,5));
+
 	threshold(img_gray, img_bw, canny_param, 255, THRESH_TOZERO);
 	
 	// Used only for visualization purposes.
 	// Uses the same parameters as the hough transform.
 	Mat edges;
-		
 	Canny(img_bw, edges, canny_param >> 1, canny_param, 3);
+
+    Mat edges_dil;
+    dilate(edges, edges_dil, Mat(), Point(-1, -1), 2);
+    erode(edges_dil, edges, Mat(), Point(-1, -1), 1);
+    //morphologyEx(edges, edges_dil, MORPH_CLOSE, Mat(), Point(-1, -1), 2);
 	
     // Calculate the scaling factor
     double factor = 195.0 / (double)edges.cols;
@@ -471,14 +487,14 @@ void frmMain::onCountMoneyClicked( wxCommandEvent& event ) {
                 max_radius + allowed_offset); // Maximum radius
 
 	// Prepare image for visualization
-    //Mat original_image_cropped;
-    //warpPerspective(image, original_image_cropped, perspective_transform, Size(image.rows, image.rows));
-    //img_color = original_image_cropped;
-    cvtColor(edges, img_color, CV_GRAY2BGR);
+    // Mat original_image_cropped;
+    // warpPerspective(image, original_image_cropped, perspective_transform, Size(image.rows, image.rows));
+    // img_color = original_image_cropped;
 
     int coin_amounts[] = {0, 0, 0, 0, 0, 0, 0, 0};
 
     cluster_circles(edges, circles);
+    cvtColor(edges, img_color, CV_GRAY2BGR);
 
 	// Draw the circles that were found
 	for( size_t i = 0; i < circles.size(); i++ ) {
