@@ -17,6 +17,7 @@
 #include <sstream>
 
 #include "circle_fitting.h"
+#include "triangle_threshold.h"
 
 using namespace cv;
 
@@ -356,9 +357,46 @@ Vec3f detect_better_center_and_radius(Mat& img, Vec3f circle) {
 
     float newX = x, newY = y, newRadius = circle[2];
 
-    if(points.size() > (unsigned int)( 3.14159 * min_radius / 2.0)) {
+    if(points.size() > (unsigned int)( 3.14159 * min_radius / 4.0)) {
+        // Go through all points all filter out those who are to far away from the average
+
+        // Calculate the average X and Y coordinates
+        // (with perfect data this would be the center)
+        float avgX = 0.0f, avgY = 0.0f;
+        for(size_t i = 0; i < points.size(); ++i) {
+            avgX += points[i].x;
+            avgY += points[i].y;
+        }
+        avgX /= points.size();
+        avgY /= points.size();
+
+        // For each point calculate the distance to the average
+        vector<float> distances;
+        distances.reserve(points.size());
+        float avgRadius = 0.0f;
+
+        // Calculate the distance and the average distance (distance = radius)
+        for(size_t i = 0; i < points.size(); ++i) {
+            float d =
+            sqrt((points[i].x - avgX) * (points[i].x - avgX) +
+                 (points[i].y - avgY) * (points[i].y - avgY));
+            distances.push_back(d);
+            avgRadius += d;
+        }
+        avgRadius /= points.size();
+
+        // Filter out points that are too much away from the average
+        vector<Point2f> new_points;
+        new_points.reserve(points.size());
+
+        for(size_t i = 0; i < distances.size(); ++i) {
+            if(fabs(distances[i] - avgRadius) < 10) {
+                new_points.push_back(points[i]);
+            }
+        }
+
         // Find a circle that fits all the found points
-        Point3f newCircle = circle_fitting(points);
+        Point3f newCircle = circle_fitting(new_points);
         newX = newCircle.x;
         newY = newCircle.y;
         newRadius = newCircle.z;
@@ -374,7 +412,7 @@ Vec3f detect_better_center_and_radius(Mat& img, Vec3f circle) {
 void cluster_circles(Mat& img, vector<Vec3f>& circles) {
     vector<Vec3f> result;
 
-    int min_dist = 81;
+    int min_dist = 26;
 
     vector<bool> marked;
     marked.reserve(circles.size());
@@ -442,18 +480,22 @@ void frmMain::onCountMoneyClicked( wxCommandEvent& event ) {
         return;
     }
 
+    //blur(image, img_color, Size(3,3));
+
 	// Convert the image to grayscale
 	Mat img_gray;
 	cvtColor(img_color, img_gray, CV_BGR2GRAY);
 
-	// TODO: Implement a routine to calculate an automatic threshold
-    int canny_param = 70;
 	
 	//Threshold to convert the image to black & white
-	Mat img_bw;
+	Mat img_bw, img_gray_copy;
     blur(img_gray, img_gray, Size(5,5));
+    //img_gray = Normalize(img_gray);
 
-	threshold(img_gray, img_bw, canny_param, 255, THRESH_TOZERO);
+    int canny_param = TriangleThreshold(img_gray);
+    std::cout << "Threshold Triangle: " << canny_param << std::endl;
+
+	threshold(img_gray, img_bw, canny_param, 255, THRESH_BINARY);
 	
 	// Used only for visualization purposes.
 	// Uses the same parameters as the hough transform.
@@ -461,8 +503,9 @@ void frmMain::onCountMoneyClicked( wxCommandEvent& event ) {
 	Canny(img_bw, edges, canny_param >> 1, canny_param, 3);
 
     Mat edges_dil;
-    dilate(edges, edges_dil, Mat(), Point(-1, -1), 2);
-    erode(edges_dil, edges, Mat(), Point(-1, -1), 1);
+    dilate(edges, edges_dil, Mat(), Point(-1, -1), 1);
+    edges = edges_dil;
+    //erode(edges_dil, edges, Mat(), Point(-1, -1), 1);
     //morphologyEx(edges, edges_dil, MORPH_CLOSE, Mat(), Point(-1, -1), 2);
 	
     // Calculate the scaling factor
@@ -471,7 +514,7 @@ void frmMain::onCountMoneyClicked( wxCommandEvent& event ) {
     // Calculate the minimum and maximum radius of a coin in pixels
     int max_radius = largest_coin_radius / factor;
     int min_radius = smallest_coin_radius / factor;
-    int allowed_offset = 1.5/*mm*/ / factor;
+    int allowed_offset = 2/*mm*/ / factor;
 
     std::cout << "Largest coin radius: " << max_radius << std::endl
               << "Smallest coin radius: " << min_radius << std::endl;
